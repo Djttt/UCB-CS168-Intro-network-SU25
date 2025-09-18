@@ -38,7 +38,22 @@ class IPv4:
     dst: str
 
     def __init__(self, buffer: bytes):
-        pass  # TODO
+        b = ''.join(format(byte, '08b') for byte in [*buffer])
+        self.version = int(b[:4], 2)
+        self.header_len = int(b[4:8], 2)
+        self.tos = int(b[8:16], 2)
+        self.length = int(b[16: 32], 2)
+        self.id = int(b[32: 48], 2)
+        self.flags = int(b[48: 51], 2)
+        self.frag_offset = int(b[51: 64], 2)
+        self.ttl = int(b[64: 72], 2)
+        self.proto = int(b[72: 80], 2)
+        self.cksum = int(b[80: 96], 2)
+        src_int = int(b[96: 128], 2)
+        self.src = ".".join(str((src_int >> (8 * i)) & 0xFF) for i in reversed(range(4)))
+        dst_int = int(b[128: 160], 2)
+        self.dst = ".".join(str((dst_int >> (8 * i)) & 0xFF) for i in reversed(range(4)))
+
 
     def __str__(self) -> str:
         return f"IPv{self.version} (tos 0x{self.tos:x}, ttl {self.ttl}, " + \
@@ -60,7 +75,10 @@ class ICMP:
     cksum: int
 
     def __init__(self, buffer: bytes):
-        pass  # TODO
+        b = ''.join(format(byte, '08b') for byte in [*buffer])
+        self.type = int(b[:8], 2)
+        self.code = int(b[8:16], 2)
+        self.cksum = int(b[16:32], 2)
 
     def __str__(self) -> str:
         return f"ICMP (type {self.type}, code {self.code}, " + \
@@ -79,7 +97,11 @@ class UDP:
     cksum: int
 
     def __init__(self, buffer: bytes):
-        pass  # TODO
+        b = ''.join(format(byte, '08b') for byte in [*buffer])
+        self.src_port = int(b[:16], 2)
+        self.dst_port = int(b[16:32], 2)
+        self.len = int(b[32:48], 2)
+        self.cksum = int(b[48:64], 2)
 
     def __str__(self) -> str:
         return f"UDP (src_port {self.src_port}, dst_port {self.dst_port}, " + \
@@ -107,10 +129,34 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
     should be included as the final element in the list.
     """
 
+    # send package 
+    sendsock.set_ttl(5)
+    sendsock.sendto("Potato".encode(), (ip, TRACEROUTE_PORT_NUMBER))
+
+
+    # recv package
+    if recvsock.recv_select():
+        buf, address = recvsock.recvfrom()
+
+        # Print out packet for debugging
+        print(f"Packet bytes: {buf.hex()}")
+        print(f"Packet is from IP: {address[0]}")
+        print(f"Packet is from port: {address[1]}")
+
+        ipv4 = IPv4(buf[:20])
+        icmp = ICMP(buf[20:28])
+        ipv4_2 = IPv4(buf[28:48])
+        udp = UDP(buf[48:56])
+        print(ipv4)
+        print(icmp)
+        print(ipv4_2)
+        print(udp)
+
+
     # TODO Add your implementation
-    for ttl in range(1, TRACEROUTE_MAX_TTL+1):
-        util.print_result([], ttl)
-    return []
+    # for ttl in range(1, TRACEROUTE_MAX_TTL+1):
+    #     util.print_result([], ttl)
+    # return []
 
 
 if __name__ == '__main__':
