@@ -108,6 +108,13 @@ class UDP:
             f"len {self.len}, cksum 0x{self.cksum:x})"
 
 # TODO feel free to add helper functions if you'd like
+def parse_packets(buf: bytes):
+    ipv4 = IPv4(buf[:20])
+    icmp = ICMP(buf[20:28])
+    ipv4_2 = IPv4(buf[28:48])
+    udp = UDP(buf[48:56])
+    return ipv4.src
+
 
 def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
         -> list[list[str]]:
@@ -128,30 +135,35 @@ def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
     routers were found, the ith list can be empty.  If `ip` is discovered, it
     should be included as the final element in the list.
     """
+    router_ip = []
+    already_arrival = False
 
     # send package 
-    sendsock.set_ttl(5)
-    sendsock.sendto("Potato".encode(), (ip, TRACEROUTE_PORT_NUMBER))
-
-
-    # recv package
-    if recvsock.recv_select():
-        buf, address = recvsock.recvfrom()
-
-        # Print out packet for debugging
-        print(f"Packet bytes: {buf.hex()}")
-        print(f"Packet is from IP: {address[0]}")
-        print(f"Packet is from port: {address[1]}")
-
-        ipv4 = IPv4(buf[:20])
-        icmp = ICMP(buf[20:28])
-        ipv4_2 = IPv4(buf[28:48])
-        udp = UDP(buf[48:56])
-        print(ipv4)
-        print(icmp)
-        print(ipv4_2)
-        print(udp)
-
+    for ttl in range(1, TRACEROUTE_MAX_TTL+1):
+        unique_ip = set()  # use set data structure to keep unique ip
+        for _ in range(PROBE_ATTEMPT_COUNT):
+            sendsock.set_ttl(ttl)
+            sendsock.sendto("Potato".encode(), (ip, TRACEROUTE_PORT_NUMBER))
+            
+            # recv package
+            if recvsock.recv_select():
+                buf, address = recvsock.recvfrom()
+                # inter_ip = parse_packets(buf)
+                inter_ip = address[0]
+                if inter_ip not in unique_ip:
+                    unique_ip.add(inter_ip)
+                if ip == inter_ip:
+                    already_arrival = True
+                    break
+        
+        util.print_result(list(unique_ip), ttl)
+        router_ip.append(list(unique_ip))
+        
+        if already_arrival:
+            break
+    
+    return router_ip
+            
 
     # TODO Add your implementation
     # for ttl in range(1, TRACEROUTE_MAX_TTL+1):
