@@ -113,7 +113,7 @@ def parse_packets(buf: bytes):
     icmp = ICMP(buf[20:28])
     ipv4_2 = IPv4(buf[28:48])
     udp = UDP(buf[48:56])
-    return ipv4.src
+    return icmp, udp
 
 
 def traceroute(sendsock: util.Socket, recvsock: util.Socket, ip: str) \
