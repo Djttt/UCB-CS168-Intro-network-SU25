@@ -92,7 +92,13 @@ class DVRouter(DVRouterBase):
         """
         
         ##### Begin Stage 2 #####
-
+        dst = packet.dst
+        table_entry = self.table.get(dst)
+        if table_entry:
+            latency = table_entry.latency
+            print(latency)
+            if latency < INFINITY:
+                self.send(packet, table_entry.port)
         ##### End Stage 2 #####
 
     def send_routes(self, force=False, single_port=None):
