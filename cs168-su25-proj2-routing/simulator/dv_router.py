@@ -161,7 +161,13 @@ class DVRouter(DVRouterBase):
             if entry.expire_time <= now:
                 # log the delete operation
                 self.log("Route to %s expired" % dst)
-                expired_dsts.append(dst)
+                if self.POISON_EXPIRED:
+                    # TableEntry(dst=host, port=port, latency=self.ports.get_latency(port), expire_time=FOREVER)
+                    self.table[dst] = TableEntry(dst=dst, port=entry.port, latency=INFINITY, 
+                                                   expire_time=api.current_time() + self.ROUTE_TTL)
+                else:
+                    expired_dsts.append(dst)
+
                 
         for dst in expired_dsts:
             self.table.pop(dst)
