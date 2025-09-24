@@ -114,9 +114,19 @@ class DVRouter(DVRouterBase):
         """
         
         ##### Begin Stages 3, 6, 7, 8, 10 #####
-        for port in self.ports.get_all_ports():
-            for dst, entry in self.table.items():
-                self.send_route(port, dst, entry.latency)
+
+        # support split horizon
+        if self.SPLIT_HORIZON:
+            for port in self.ports.get_all_ports():
+                for dst, entry in self.table.items():
+                    if port != entry.port:
+                        # don't advertise paths bask to the next hop
+                        self.send_route(port, dst, entry.latency)
+                
+
+        # for port in self.ports.get_all_ports():
+        #     for dst, entry in self.table.items():
+        #         self.send_route(port, dst, entry.latency)
         ##### End Stages 3, 6, 7, 8, 10 #####
 
     def expire_routes(self):
