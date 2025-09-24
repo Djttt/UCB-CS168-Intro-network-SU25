@@ -126,7 +126,18 @@ class DVRouter(DVRouterBase):
         """
         
         ##### Begin Stages 5, 9 #####
-
+        now = api.current_time()
+        expired_dsts = []
+        for dst, entry in self.table.items():
+            if entry.expire_time == FOREVER:
+                continue
+            if entry.expire_time <= now:
+                # log the delete operation
+                self.log("Route to %s expired" % dst)
+                expired_dsts.append(dst)
+                
+        for dst in expired_dsts:
+            self.table.pop(dst)
         ##### End Stages 5, 9 #####
 
     def handle_route_advertisement(self, route_dst, route_latency, port):
@@ -154,6 +165,11 @@ class DVRouter(DVRouterBase):
                     self.table[route_dst] = TableEntry(dst=route_dst, port=port,
                                                        latency=cost, 
                                                        expire_time=api.current_time() + self.ROUTE_TTL)
+                # if cost == entry.latency:
+                #     # temporarily chage for test
+                #     self.table[route_dst] = TableEntry(dst=route_dst, port=port,
+                #                                        latency=cost, 
+                #                                        expire_time=api.current_time() + self.ROUTE_TTL)
         else:
             # dst do not exit in forwarding table
             cost = self.ports.get_latency(port) + route_latency
