@@ -122,11 +122,23 @@ class DVRouter(DVRouterBase):
                     if port != entry.port:
                         # don't advertise paths bask to the next hop
                         self.send_route(port, dst, entry.latency)
-                
+            return
+        
+        self.POISON_REVERSE = True
+        if self.POISON_REVERSE:
+            for port in self.ports.get_all_ports():
+                for dst, entry in self.table.items():
+                    if port == entry.port:
+                        # send a poison back to next hop
+                        self.send_route(port, dst, INFINITY)
+                    else:
+                        self.send_route(port, dst, entry.latency)
+            return
 
-        # for port in self.ports.get_all_ports():
-        #     for dst, entry in self.table.items():
-        #         self.send_route(port, dst, entry.latency)
+
+        for port in self.ports.get_all_ports():
+            for dst, entry in self.table.items():
+                self.send_route(port, dst, entry.latency)
         ##### End Stages 3, 6, 7, 8, 10 #####
 
     def expire_routes(self):
