@@ -114,7 +114,9 @@ class DVRouter(DVRouterBase):
         """
         
         ##### Begin Stages 3, 6, 7, 8, 10 #####
-
+        for port in self.ports.get_all_ports():
+            for dst, entry in self.table.items():
+                self.send_route(port, dst, entry.latency)
         ##### End Stages 3, 6, 7, 8, 10 #####
 
     def expire_routes(self):
@@ -138,7 +140,25 @@ class DVRouter(DVRouterBase):
         """
         
         ##### Begin Stages 4, 10 #####
-
+        entry = self.table.get(route_dst)
+        if entry:
+            # dst already exit in table
+            cost = self.ports.get_latency(port) + route_latency
+            if  port == entry.port:
+                # update from next hop
+                self.table[route_dst] = TableEntry(dst=route_dst, port=port, 
+                                                latency=cost, 
+                                                expire_time=api.current_time() + self.ROUTE_TTL)
+            else:
+                if cost < entry.latency:
+                    self.table[route_dst] = TableEntry(dst=route_dst, port=port,
+                                                       latency=cost, 
+                                                       expire_time=api.current_time() + self.ROUTE_TTL)
+        else:
+            # dst do not exit in forwarding table
+            cost = self.ports.get_latency(port) + route_latency
+            self.table[route_dst] = TableEntry(dst=route_dst, port=port, latency=cost, 
+                                               expire_time=api.current_time() + self.ROUTE_TTL)
         ##### End Stages 4, 10 #####
 
     def handle_link_up(self, port, latency):
