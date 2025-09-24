@@ -121,10 +121,12 @@ class DVRouter(DVRouterBase):
                 for dst, entry in self.table.items():
                     if port != entry.port:
                         # don't advertise paths bask to the next hop
-                        self.send_route(port, dst, entry.latency)
+                        if entry.latency >= INFINITY:
+                            self.send_route(port, dst, INFINITY)
+                        else:
+                            self.send_route(port, dst, entry.latency)
             return
         
-        self.POISON_REVERSE = True
         if self.POISON_REVERSE:
             for port in self.ports.get_all_ports():
                 for dst, entry in self.table.items():
@@ -132,7 +134,10 @@ class DVRouter(DVRouterBase):
                         # send a poison back to next hop
                         self.send_route(port, dst, INFINITY)
                     else:
-                        self.send_route(port, dst, entry.latency)
+                        if entry.latency >= INFINITY:
+                            self.send_route(port, dst, INFINITY)
+                        else:
+                            self.send_route(port, dst, entry.latency)
             return
 
 
