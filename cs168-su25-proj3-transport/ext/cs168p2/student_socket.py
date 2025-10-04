@@ -565,9 +565,7 @@ class StudentUSocket(StudentUSocketBase):
     if (p.tcp.SYN or p.tcp.FIN or p.tcp.payload) and not retxed:
 
       ## Start of Stage 4.4 ##
-      seq_len = len(p.tcp.payload)
-      if seq_len > 0:
-        self.snd.nxt = self.snd.nxt |PLUS| seq_len
+      self.snd.nxt = self.snd.nxt |PLUS| len(p.tcp.payload)
       ## End of Stage 4.4 ##
       pass
 
@@ -619,13 +617,15 @@ class StudentUSocket(StudentUSocketBase):
     ## Start of Stage 3.2 ##
     # checking recv queue
     # Hint: data = packet.app[self.rcv.nxt |MINUS| packet.tcp.seq:]
-    while not self.rx_queue.empty():  
+    while not self.rx_queue.empty():
       s, p = self.rx_queue.peek()
-      if self.rcv.nxt |EQ| s:
-        _, packet = self.rx_queue.pop()
-        data = packet.app[self.rcv.nxt |MINUS| packet.tcp.seq:]
-        self.handle_accepted_seg(packet.tcp, data)  
+      if s |LE| self.rcv.nxt:
+        # process in-order packets
+        self.rx_queue.pop()
+        seg = p.tcp
+        self.handle_accepted_seg(seg, seg.payload[self.rcv.nxt |MINUS| seg.seq:])
       else:
+        # all in-order packets in the queue have been handled
         self.set_pending_ack()
         break
       
@@ -663,12 +663,14 @@ class StudentUSocket(StudentUSocketBase):
 
     if acceptable_ack:
       ## Start of Stage 1.3 ##
-      self.rcv.nxt = seg.seq |PLUS| 1
-      self.snd.una = self.snd.una |PLUS| 1
       if self.snd.una |GT| self.snd.iss:
-        self.snd.nxt = seg.ack
-        self.state = ESTABLISHED
-        self.set_pending_ack()
+        # the SYN/ACK is not acking the SYN we sent
+        pass
+      else:
+        self.rcv.nxt = seg.seq |PLUS| 1    # update recv space to start at the iss+1 of the other side
+        self.snd.una = seg.ack             # update send space left window
+        self.state = ESTABLISHED      
+        self.set_pending_ack()             # want to send a ACK
         self.update_window(seg)
 
       ## End of Stage 1.3 ##
@@ -716,7 +718,8 @@ class StudentUSocket(StudentUSocketBase):
     """
 
     ## Start of Stage 5.1 ##
-    self.snd.wnd = self.TX_DATA_MAX # remove when implemented
+    # self.snd.wnd = self.TX_DATA_MAX # remove when implemented
+    self.snd.wnd = seg.win
     self.snd.wl1 = seg.seq
     self.snd.wl2 = seg.ack
 
@@ -730,8 +733,7 @@ class StudentUSocket(StudentUSocketBase):
     acceptable_seg()
     """
     ## Start of Stage 4.2 ##
-    if seg.seq |EQ| self.snd.una:
-      self.snd.una = self.snd.una |PLUS| len(seg.payload)
+    self.snd.una = seg.ack 
     ## End of Stage 4.2 ##
 
 
@@ -784,12 +786,15 @@ class StudentUSocket(StudentUSocketBase):
     # fifth, check ACK field
     if self.state in (ESTABLISHED, FIN_WAIT_1, FIN_WAIT_2, CLOSE_WAIT, CLOSING):
       ## Start of Stage 4.1 ##
-      if seg.ack |GE| snd.una and seg.ack |LT| snd.nxt:
-        self.handle_accepted_ack(seg)
-      elif seg.ack |LT| snd.una:
+      if seg.ack |GT| snd.nxt:
         continue_after_ack = False
-      elif seg.ack |GE| (snd.una |PLUS| snd.wnd):
-        return False
+        return
+      elif seg.ack |GE| snd.una:  # note: here is >= because a middle packet may
+                                  # get dropped and all the following acks will
+                                  # ack on the same seq number (the lost one)
+        self.handle_accepted_ack(seg)
+      else: 
+        continue_after_ack = False
       ## End of Stage 4.1 ##
 
       if snd.una |LE| seg.ack and seg.ack |LE| snd.nxt:
@@ -859,19 +864,13 @@ class StudentUSocket(StudentUSocketBase):
     bytes_sent = 0
 
     ## Start of Stage 4.3 ##
-    remaining = self.snd.una |PLUS| snd.wnd |MINUS| snd.nxt
-    while remaining > 0:
-      if not self.tx_data:
-        break
-      send_len = min(len(self.tx_data), remaining, self.mss)
-      payload = self.tx_data[:send_len]
-      self.tx_data = self.tx_data[send_len:]
-      
-      packet = self.new_packet(data=payload)
-      self.tx(packet)
-
-      # self.snd.nxt = self.snd.nxt |PLUS| send_len
-      remaining -= len(payload)
+    remaining = self.snd.una + snd.wnd - snd.nxt
+    while remaining > 0 and self.tx_data:
+      payload_size = min(remaining, len(self.tx_data), self.mss)
+      payload = self.tx_data[:payload_size]
+      p = self.new_packet(data=payload)
+      self.tx(p)
+      self.tx_data = self.tx_data[payload_size:]
       num_pkts += 1
       bytes_sent += len(payload)
 
