@@ -684,7 +684,20 @@ class StudentUSocket(StudentUSocketBase):
     """
 
     ## Start of Stage 9.1 ##
+    R = self.stack.now - acked_pkt.tx_ts
+    
+    if not hasattr(self, "srtt"):
+      self.srtt = R
+      self.rttvar = R / 2
+    else:
+      self.rttvar = (1 - self.beta) * self.rttvar + self.beta * abs(self.srtt - R)
+      self.srtt = (1 - self.alpha) * self.srtt + self.alpha * R
 
+    self.rto = self.srtt + max(self.G, self.K * self.rttvar)
+
+    # clamp function. Clamp self.rto so that it is 
+    # at most self.MAX_RTO, and at least self.MIN_RTO
+    self.rto = max(self.MIN_RTO, min(self.rto, self.MAX_RTO))
     ## End of Stage 9.1 ##
 
     pass
@@ -739,13 +752,11 @@ class StudentUSocket(StudentUSocketBase):
 
 
     ## Start of Stage 8.2 ##
-    self.retx_queue.pop_upto(seg.ack)
+    acked_pkts = self.retx_queue.pop_upto(seg.ack)
     ## End of Stage 8.2 ##
 
 
     ## Start of Stage 9.2 ##
-
-    acked_pkts = [] # remove when implemented
     for (ackno, p) in acked_pkts:
       if not p.retxed:
         self.update_rto(p)
@@ -931,7 +942,8 @@ class StudentUSocket(StudentUSocketBase):
       self.tx(p, retxed=True)
 
       ## Start of Stage 9.3 ##
-
+      self.rto *= 2
+      self.rto = max(self.MAX_RTO, self.rto)
       ## End of Stage 9.3 ##
 
   def set_pending_ack(self):
