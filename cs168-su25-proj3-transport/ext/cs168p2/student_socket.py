@@ -478,7 +478,7 @@ class StudentUSocket(StudentUSocketBase):
       self._delete_tcb()
     elif self.state is ESTABLISHED:
       ## Start of Stage 7.1 ##
-
+      self.fin_ctrl.set_pending(next_state=FIN_WAIT_1)
       ## End of Stage 7.1 ##
       pass
     elif self.state in (FIN_WAIT_1,FIN_WAIT_2):
@@ -773,6 +773,19 @@ class StudentUSocket(StudentUSocketBase):
 
 
     ## Start of Stage 7.2 ##
+    if self.state == FIN_WAIT_1:
+      if seg.ACK and seg.FIN:
+        # self.fin_ctrl.set_pending()
+        self.set_pending_ack()
+        self.start_timer_timewait()
+      elif seg.FIN:
+        self.set_pending_ack()
+        self.state = CLOSING
+    elif self.state == FIN_WAIT_2:
+      if seg.FIN:
+        self.rcv.nxt = self.rcv.nxt |PLUS| len(seg.payload)
+        self.set_pending_ack()
+        self._delete_tcb()
 
     ## End of Stage 7.2 ##
 
@@ -808,12 +821,14 @@ class StudentUSocket(StudentUSocketBase):
     ## Start of Stage 6.3 ##
     ## Start of Stage 7.3 ##
     if self.state == FIN_WAIT_1:
-      pass
+      if self.fin_ctrl.acks_our_fin(seg.ack):
+        self.state = FIN_WAIT_2
     elif self.state == FIN_WAIT_2:
       if self.retx_queue.empty():
         self.set_pending_ack()
     elif self.state == CLOSING:
-      pass
+      if self.fin_ctrl.acks_our_fin(seg.ack):
+        self.start_timer_timewait()
     elif self.state == LAST_ACK:
       if self.fin_ctrl.acks_our_fin(seg.ack):
         self._delete_tcb()
